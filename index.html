@@ -101,7 +101,7 @@
   <div id="result">ここに読み取り結果が表示されます</div>
   <div class="button-group">
     <button onclick="downloadCSV()">CSVで保存</button>
-    <button id="completeSeatBtn" onclick="completeCurrentSeat()">この座席の登録を完了</button>
+    <button id="completeSeatBtn" onclick="completeCurrentSeat()" style="display:none;">この座席の登録を完了</button>
     <button onclick="undoLast()">最後の追加を取り消す</button>
     <button onclick="clearSavedData()">🗑 保存データを削除</button>
     <button onclick="saveSeatMapToDrive()">💾 Google Driveに保存</button>
@@ -118,44 +118,277 @@
   <script>
 let isRankingMode = false;
 let players = JSON.parse(localStorage.getItem("players") || "{}");
+let seatMap = JSON.parse(localStorage.getItem("seatMap") || "{}");
+let currentSeat = null;
+let actionHistory = [];
+let lastScanTime = 0;
+let draggedItem = null;
 
 // 順位履歴配列を復元（無ければ空配列）
 let rankingHistory = JSON.parse(localStorage.getItem("rankingHistory") || "[]");
 
-// 順位履歴を保存する関数
+// メッセージ表示用
+function displayMessage(msg) {
+  const el = document.getElementById("result");
+  if(el) el.innerText = msg;
+}
+
+// 表示更新
+function updateTable() {
+  const tbody = document.querySelector("#seatTable tbody");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  for (const seatID in seatMap) {
+    const tr = document.createElement("tr");
+
+    // 座席IDセル
+    const tdSeat = document.createElement("td");
+    tdSeat.textContent = seatID;
+    tdSeat.className = "seat";
+    tdSeat.onclick = () => {
+      if(confirm(`座席「${seatID}」の登録を削除しますか？`)) {
+        delete seatMap[seatID];
+        localStorage.setItem("seatMap", JSON.stringify(seatMap));
+        updateTable();
+        displayMessage(`座席「${seatID}」を削除しました。`);
+      }
+    };
+
+    // 生徒一覧セル
+    const tdPlayers = document.createElement("td");
+    if(seatMap[seatID].length === 0) {
+      tdPlayers.textContent = "(登録なし)";
+    } else {
+      seatMap[seatID].forEach(pid => {
+        const span = document.createElement("span");
+        span.className = "student";
+        span.textContent = players[pid]?.name || pid;
+        span.onclick = () => {
+          if(confirm(`生徒「${players[pid]?.name || pid}」を座席「${seatID}」から削除しますか？`)) {
+            seatMap[seatID] = seatMap[seatID].filter(p => p !== pid);
+            localStorage.setItem("seatMap", JSON.stringify(seatMap));
+            updateTable();
+            displayMessage(`生徒「${players[pid]?.name || pid}」を削除しました。`);
+          }
+        };
+        tdPlayers.appendChild(span);
+      });
+    }
+
+    tr.appendChild(tdSeat);
+    tr.appendChild(tdPlayers);
+    tbody.appendChild(tr);
+  }
+}
+
+// 座席登録完了処理
+function completeCurrentSeat() {
+  if(!currentSeat) {
+    displayMessage("登録中の座席がありません。");
+    return;
+  }
+  displayMessage(`座席「${currentSeat}」の登録を完了しました。`);
+  currentSeat = null;
+  const btn = document.getElementById("completeSeatBtn");
+  if (btn) btn.style.display = "none";
+  localStorage.setItem("seatMap", JSON.stringify(seatMap));
+  updateTable();
+}
+
+// 最後の追加を取り消し
+function undoLast() {
+  if(actionHistory.length === 0) {
+    displayMessage("取り消す操作がありません。");
+    return;
+  }
+  const last = actionHistory.pop();
+  if(seatMap[last.seat]) {
+    seatMap[last.seat] = seatMap[last.seat].filter(p => p !== last.person);
+    localStorage.setItem("seatMap", JSON.stringify(seatMap));
+    updateTable();
+    displayMessage(`最後の追加「${last.person}」を座席「${last.seat}」から取り消しました。`);
+  }
+}
+
+// 保存データ全削除
+function clearSavedData() {
+  if(!confirm("保存されているすべての座席・プレイヤーデータを削除してよいですか？")) return;
+  localStorage.removeItem("seatMap");
+  localStorage.removeItem("players");
+  localStorage.removeItem("rankingHistory");
+  seatMap = {};
+  players = {};
+  rankingHistory = [];
+  actionHistory = [];
+  currentSeat = null;
+  updateTable();
+  displayMessage("保存データをすべて削除しました。");
+}
+
+// CSVダウンロード
+function downloadCSV() {
+  let csv = "座席ID,生徒ID一覧\n";
+  for(const seatID in seatMap){
+    csv += seatID + "," + seatMap[seatID].join(";") + "\n";
+  }
+  const blob = new Blob([csv], {type: "text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "seatmap.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Google Drive連携（未実装）
+function saveSeatMapToDrive() {
+  alert("Google Drive連携機能は未実装です。");
+}
+function loadSeatMapFromDrive() {
+  alert("Google Driveからの復元機能は未実装です。");
+}
+
+// 順位履歴保存
 function saveRankingHistory(rankIds) {
   const timestamp = new Date().toISOString();
   rankingHistory.push({ timestamp, rankIds });
   localStorage.setItem("rankingHistory", JSON.stringify(rankingHistory));
 }
 
-// 既存の applyRankingFromArray 内で先頭付近に追加（順位計算の前に）
+// レート更新と順位履歴保存
 function applyRankingFromArray(rankIds) {
   if (rankIds.length === 0) return;
 
-  // --- 追加ここから ---
+  // 順位履歴に保存
   saveRankingHistory(rankIds);
-  // --- 追加ここまで ---
 
-  const totalPlayers = rankIds.length;
   const INITIAL_RATE = 50;
   const MIN_RATE = 30;
   const basePointsByRank = [6, 4, 3, 2, 1, 0];
   let outputLog = [];
 
-  // 以下は元のコード...
-  for (let i = 0; i < totalPlayers; i++) {
-    // ...
+  for (let i = 0; i < rankIds.length; i++) {
+    const id = rankIds[i];
+    if (!players[id]) continue;
+
+    const p = players[id];
+    const prevRate = p.rate ?? INITIAL_RATE;
+    const prevRank = p.lastRank;
+    let basePoint = i < basePointsByRank.length ? basePointsByRank[i] : 0;
+    let rankBonus = 0;
+
+    if (prevRank !== null) {
+      if (prevRank === 1 && i + 1 === rankIds.length) rankBonus = -3;
+      else if (prevRank === rankIds.length && i + 1 === 1) rankBonus = +5;
+      else if (prevRank === rankIds.length && i + 1 === rankIds.length) rankBonus = +5;
+    }
+
+    let totalPoint = basePoint + rankBonus;
+    if (prevRate >= 80) totalPoint *= 0.8;
+
+    const newRate = Math.max(MIN_RATE, Math.round(prevRate + totalPoint));
+    p.matchCount = (p.matchCount ?? 0) + 1;
+    if (i === 0) p.winCount = (p.winCount ?? 0) + 1;
+
+    p.rate = newRate;
+    p.lastRank = i + 1;
+
+    outputLog.push(`${p.name} (${id}): 前回レート${prevRate} → 新レート${newRate}（ポイント変動: ${totalPoint.toFixed(1)}）`);
   }
-  // ...
+
+  localStorage.setItem("players", JSON.stringify(players));
+  displayMessage("レートを更新しました。");
+  document.getElementById("ranking-result").innerText = outputLog.join("\n");
+  updateTable();
 }
-    
+
+// 順位登録モード切替
 function toggleRankingMode() {
   isRankingMode = !isRankingMode;
   displayMessage(isRankingMode ? "✅ 順位登録モードに入りました（座席QRを読み取ってください）" : "📦 通常モードに戻りました");
 }
 
-// QR読み取り成功時の処理
+// 順位履歴表示
+function showRankingHistory() {
+  if (rankingHistory.length === 0) {
+    alert("順位履歴はまだありません。");
+    return;
+  }
+
+  let msg = "順位履歴一覧（最新5件）:\n\n";
+  const latest5 = rankingHistory.slice(-5).reverse();
+
+  latest5.forEach((entry, idx) => {
+    msg += `${idx + 1}. ${entry.timestamp}\n`;
+    entry.rankIds.forEach((id, i) => {
+      msg += `   ${i + 1}位: ${players[id]?.name || id}\n`;
+    });
+    msg += "\n";
+  });
+
+  alert(msg);
+}
+
+// ドラッグUIによる並び替え（順位決定）
+function showRankingSelection(seatID) {
+  const playersInSeat = seatMap[seatID];
+  if (!playersInSeat || playersInSeat.length === 0) {
+    displayMessage(`座席 ${seatID} にプレイヤーが登録されていません`);
+    return;
+  }
+
+  const container = document.createElement('div');
+  container.id = 'ranking-select-ui';
+  container.style = 'padding:1rem; background:#fff; border:1px solid #ccc; margin:1rem auto; max-width:500px; border-radius:8px;';
+
+  const title = document.createElement('h3');
+  title.textContent = `座席 ${seatID} の順位を決定してください（上が1位）`;
+  container.appendChild(title);
+
+  const list = document.createElement('ul');
+  list.style = 'list-style:none; padding:0;';
+  list.id = 'sortable-player-list';
+
+  playersInSeat.forEach(pid => {
+    const li = document.createElement('li');
+    li.textContent = players[pid]?.name || pid;
+    li.dataset.id = pid;
+    li.style = 'padding:8px; margin:4px 0; background:#e3f2fd; border-radius:4px; cursor:move;';
+    li.setAttribute('draggable', 'true');
+    list.appendChild(li);
+  });
+
+  list.addEventListener('dragstart', (e) => {
+    draggedItem = e.target;
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  list.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const afterElement = [...list.children].find(el => {
+      return e.clientY < el.getBoundingClientRect().top + el.offsetHeight / 2;
+    });
+    if (afterElement) {
+      list.insertBefore(draggedItem, afterElement);
+    } else {
+      list.appendChild(draggedItem);
+    }
+  });
+
+  container.appendChild(list);
+
+  const btn = document.createElement('button');
+  btn.textContent = '順位確定・レート計算';
+  btn.style = 'margin-top:1rem;';
+  btn.onclick = () => {
+    const ordered = [...list.children].map(li => li.dataset.id);
+    document.body.removeChild(container);
+    applyRankingFromArray(ordered);
+  };
+  container.appendChild(btn);
+  document.body.appendChild(container);
+}
+
+// QRコード読み取り成功時の処理
 function onScanSuccess(decodedText) {
   const now = Date.now();
   if (now - lastScanTime < 2000) return;
@@ -219,130 +452,28 @@ function onScanSuccess(decodedText) {
   }
 }
 
-// ドラッグUIによる並び替え
-function showRankingSelection(seatID) {
-  const playersInSeat = seatMap[seatID];
-  if (!playersInSeat || playersInSeat.length === 0) {
-    displayMessage(`座席 ${seatID} にプレイヤーが登録されていません`);
-    return;
-  }
+// html5-qrcode 起動
+function startScanner() {
+  const html5QrCode = new Html5Qrcode("reader");
+  const config = { fps: 10, qrbox: 250 };
 
-  const container = document.createElement('div');
-  container.id = 'ranking-select-ui';
-  container.style = 'padding:1rem; background:#fff; border:1px solid #ccc; margin:1rem auto; max-width:500px; border-radius:8px;';
-
-  const title = document.createElement('h3');
-  title.textContent = `座席 ${seatID} の順位を決定してください（上が1位）`;
-  container.appendChild(title);
-
-  const list = document.createElement('ul');
-  list.style = 'list-style:none; padding:0;';
-  list.id = 'sortable-player-list';
-
-  playersInSeat.forEach(pid => {
-    const li = document.createElement('li');
-    li.textContent = players[pid]?.name || pid;
-    li.dataset.id = pid;
-    li.style = 'padding:8px; margin:4px 0; background:#e3f2fd; border-radius:4px; cursor:move;';
-    li.setAttribute('draggable', 'true');
-    list.appendChild(li);
-  });
-
-  list.addEventListener('dragstart', (e) => {
-    draggedItem = e.target;
-    e.dataTransfer.effectAllowed = 'move';
-  });
-  list.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    const afterElement = [...list.children].find(el => {
-      return e.clientY < el.getBoundingClientRect().top + el.offsetHeight / 2;
-    });
-    if (afterElement) {
-      list.insertBefore(draggedItem, afterElement);
-    } else {
-      list.appendChild(draggedItem);
+  html5QrCode.start(
+    { facingMode: "environment" },
+    config,
+    onScanSuccess,
+    (errorMessage) => {
+      // 読み取り失敗時のコールバック（必要なら）
     }
+  ).catch(err => {
+    displayMessage("カメラ起動に失敗しました: " + err);
   });
-
-  container.appendChild(list);
-
-  const btn = document.createElement('button');
-  btn.textContent = '順位確定・レート計算';
-  btn.style = 'margin-top:1rem;';
-  btn.onclick = () => {
-    const ordered = [...list.children].map(li => li.dataset.id);
-    document.body.removeChild(container);
-    applyRankingFromArray(ordered);
-  };
-  container.appendChild(btn);
-  document.body.appendChild(container);
 }
 
-function showRankingHistory() {
-  if (rankingHistory.length === 0) {
-    alert("順位履歴はまだありません。");
-    return;
-  }
-
-  let msg = "順位履歴一覧（最新5件）:\n\n";
-  const latest5 = rankingHistory.slice(-5).reverse();
-
-  latest5.forEach((entry, idx) => {
-    msg += `${idx + 1}. ${entry.timestamp}\n`;
-    entry.rankIds.forEach((id, i) => {
-      msg += `   ${i + 1}位: ${players[id]?.name || id}\n`;
-    });
-    msg += "\n";
-  });
-
-  alert(msg);
-}
-
-// レート更新
-function applyRankingFromArray(rankIds) {
-  const totalPlayers = rankIds.length;
-  if (totalPlayers === 0) return;
-
-  const INITIAL_RATE = 50;
-  const MIN_RATE = 30;
-  const basePointsByRank = [6, 4, 3, 2, 1, 0];
-  let outputLog = [];
-
-  for (let i = 0; i < totalPlayers; i++) {
-    const id = rankIds[i];
-    if (!players[id]) continue;
-
-    const p = players[id];
-    const prevRate = p.rate ?? INITIAL_RATE;
-    const prevRank = p.lastRank;
-    let basePoint = i < basePointsByRank.length ? basePointsByRank[i] : 0;
-    let rankBonus = 0;
-
-    if (prevRank !== null) {
-      if (prevRank === 1 && i + 1 === totalPlayers) rankBonus = -3;
-      else if (prevRank === totalPlayers && i + 1 === 1) rankBonus = +5;
-      else if (prevRank === totalPlayers && i + 1 === totalPlayers) rankBonus = +5;
-    }
-
-    let totalPoint = basePoint + rankBonus;
-    if (prevRate >= 80) totalPoint *= 0.8;
-
-    const newRate = Math.max(MIN_RATE, Math.round(prevRate + totalPoint));
-    p.matchCount = (p.matchCount ?? 0) + 1;
-    if (i === 0) p.winCount = (p.winCount ?? 0) + 1;
-
-    p.rate = newRate;
-    p.lastRank = i + 1;
-
-    outputLog.push(`${p.name} (${id}): 前回レート${prevRate} → 新レート${newRate}（ポイント変動: ${totalPoint.toFixed(1)}）`);
-  }
-
-  localStorage.setItem("players", JSON.stringify(players));
-  displayMessage("レートを更新しました。");
-  document.getElementById("ranking-result").innerText = outputLog.join("\n");
+// ページロード時に開始
+window.addEventListener("load", () => {
   updateTable();
-}
-</script>
+  startScanner();
+});
+  </script>
 </body>
 </html>
-

@@ -201,8 +201,6 @@
     </table>
   </div>
 
-  <div id="ranking-result" style="max-width:600px; margin:1rem auto; white-space: pre-wrap; background:#fff; padding:1rem; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.1);"></div>
-
   <pre id="ranking-result" style="
   max-width: 600px;
   margin: 1rem auto;
@@ -384,21 +382,26 @@ function makeListSortable(list) {
   });
 
   list.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    const afterElement = [...list.children].find(el => {
-      const box = el.getBoundingClientRect();
-      return e.clientY < box.top + box.height / 2;
-    });
-    if (afterElement) {
-      list.insertBefore(draggedItem, afterElement);
-    } else {
-      list.appendChild(draggedItem);
-    }
+  e.preventDefault();
+
+  const draggingElement = draggedItem; // ドラッグしている要素
+
+  // 子要素を逆順に取得して、マウスのY座標より下の最初の要素を探す
+  const afterElement = [...list.children].reverse().find(el => {
+    if (el === draggingElement) return false; // 自分自身は無視
+    const box = el.getBoundingClientRect();
+    return e.clientY > box.top + box.height / 2;
   });
-  
-  list.addEventListener('dragend', () => {
-    draggedItem = null;
-  });
+
+  if (afterElement) {
+    // afterElementの次にドラッグ要素を挿入（afterElementの次の兄弟の前に挿入）
+    list.insertBefore(draggingElement, afterElement.nextSibling);
+  } else {
+    // 最後に追加
+    list.insertBefore(draggingElement, list.firstChild);
+  }
+});
+
   
   // 全子要素にdraggable属性を付与済み（ここでは冗長かも）
   [...list.children].forEach(li => li.setAttribute('draggable', 'true'));

@@ -608,18 +608,29 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   html5QrCode = new Html5Qrcode("reader");
+
   html5QrCode.start(
-    { facingMode: "environment" },
-    {
-      fps: 15,
-      qrbox: { width: 250, height: 250 },
-      aspectRatio: 1.33
-    },
-    onScanSuccess
-  ).catch(err => {
-    console.error("カメラ起動エラー:", err);
-    displayMessage("カメラ起動に失敗しました: " + err);
-  });
+  "reader", // もしくはカメラID文字列
+  {
+    fps: 15,
+    qrbox: { width: 250, height: 250 }
+  },
+  onScanSuccess
+);
+
+Html5Qrcode.getCameras().then(cameras => {
+  if (cameras && cameras.length) {
+    console.log("利用可能カメラ一覧:", cameras);
+    const cameraId = cameras[0].id; // 好みのカメラを指定
+    html5QrCode.start(
+      cameraId,
+      { fps: 15, qrbox: { width: 250, height: 250 } },
+      onScanSuccess
+    );
+  }
+}).catch(err => {
+  console.error("カメラ取得エラー:", err);
+});
 
   const btn = document.getElementById("completeSeatBtn");
   if (btn) btn.style.display = "none";

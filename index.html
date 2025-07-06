@@ -393,28 +393,41 @@ async function loadSeatMapFromDrive() {
       return `${baseName}（${count}）`;
    }
 
-  function onScanSuccess(decodedText) {
-    const now = Date.now();
-    if (now - lastScanTime < 2000) return; // 3秒以内の連続スキャンを無視
-    lastScanTime = now;
+function onScanSuccess(decodedText) {
+  const now = Date.now();
+  if (now - lastScanTime < 2000) return; // 2秒以内の連続スキャンを無視
+  lastScanTime = now;
 
-    if (!/^(table|player)/.test(decodedText)) {
-      displayMessage("❗不正なQRコードです。'table〜' または 'player〜' で始めてください。");
+  if (!/^(table|player)/.test(decodedText)) {
+    displayMessage("❗不正なQRコードです。'table〜' または 'player〜' で始めてください。");
+    return;
+  }
+
+  if (decodedText.startsWith("table")) {
+    currentSeat = decodedText;
+    if (!seatMap[currentSeat]) seatMap[currentSeat] = [];
+    displayMessage(`座席「${currentSeat}」を読み取りました。最大6人まで登録可能。`);
+    const btn = document.getElementById("completeSeatBtn");
+    if (btn) btn.style.display = "block";
+  } else if (decodedText.startsWith("player")) {
+    if (!currentSeat) {
+      displayMessage("最初に座席QR（table〜）を読み取ってください。");
       return;
     }
 
-    if (decodedText.startsWith("table")) {
-      currentSeat = decodedText;
-      if (!seatMap[currentSeat]) seatMap[currentSeat] = [];
-      displayMessage(`座席「${currentSeat}」を読み取りました。最大6人まで登録可能。`);
-      const btn = document.getElementById("completeSeatBtn");
-      if (btn) btn.style.display = "block";
-    } else if (decodedText.startsWith("player")) {
-      if (!currentSeat) {
-        displayMessage("最初に座席QR（table〜）を読み取ってください。");
-        return;
-      }
-
+    if (!players[decodedText]) {
+      // 新規プレイヤー
+      pendingQR = decodedText;
+      document.getElementById("nickname-form").style.display = "block";
+      document.getElementById("nickname-input").value = "";
+      displayMessage(`新規プレイヤー「${decodedText}」が読み取られました。ニックネームを入力してください。`);
+    } else {
+      // 既存プレイヤーなら座席に登録
+      registerToSeat(decodedText);
+    }
+  }
+}
+  
 if (!players[decodedText]) {
       // 新規プレイヤー
       pendingQR = decodedText;

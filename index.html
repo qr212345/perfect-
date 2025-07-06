@@ -169,7 +169,14 @@
     <button onclick="saveNickname()">登録</button>
   </div>
 
-  <script>
+<div id="ranking-input" style="max-width: 400px; margin: 2rem auto; background:#fff; padding:1rem; border-radius:8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
+  <h2>順位入力（1位→最下位順にQRコードIDをカンマ区切りで）</h2>
+  <textarea id="ranking-text" rows="4" style="width: 100%;" placeholder="例: player123,player456,player789"></textarea>
+  <button onclick="applyRanking()">順位確定・レート計算</button>
+  <div id="ranking-result" style="margin-top: 1rem; font-weight: bold;"></div>
+</div>
+
+<script>
   const API_URL = "https://script.google.com/macros/s/AKfycbyTxi9AHEaql2PpbrlnpFIW0jVzqD2jo_MEftHHYGQCSXPm5Dcqlz4UcZ_nQYHNDHdT/exec";
     
   let currentSeat = null;
@@ -437,6 +444,104 @@ if (!players[decodedText]) {
       }
     }
   }
+
+function applyRanking() {
+  const input = document.getElementById("ranking-text").value.trim();
+  if (!input) {
+    alert("順位を入力してください");
+    return;
+  }
+
+  const rankIds = input.split(",").map(id => id.trim()).filter(id => id.length > 0);
+
+  // 順位の人数 = rankIds.length
+  const totalPlayers = rankIds.length;
+  if (totalPlayers === 0) {
+    alert("有効なプレイヤーIDがありません");
+    return;
+  }
+
+  // ルール定義
+  const INITIAL_RATE = 50;
+  const MIN_RATE = 30;
+
+  // 1位から最下位になったら追加で-5
+  // 最下位から1位になったら+5
+  // 最下位→最下位は+8（今回は省略OK）
+
+  // 今回の順位と前回のレートを見て差分計算
+  // 例として順位に応じて増減ポイントを計算してレートを更新
+  // 後でルールを複雑化可能
+
+  // まず、playersが存在しないIDは初期登録（念のため）
+  for (const id of rankIds) {
+    if (!players[id]) {
+      players[id] = {
+        id: generateHexID(),
+        name: id,
+        rate: INITIAL_RATE,
+        matchCount: 0,
+        winCount: 0
+      };
+    }
+  }
+
+  // 前回順位を仮に保存(なければnull)
+  // 今回はrankIdsのindexが順位（0が1位）
+  // ここでは前回順位情報をplayers[id].lastRankに保持している想定
+
+  // レート変動計算
+  // 例）順位による基本ポイント変動
+  // 1位: +10, 2位: +5, 3位: 0, 4位: -5, 5位: -10, ...
+  // プレイヤー人数によって調整してください
+
+  // ポイントの割り振り例(人数5人の場合)
+  // 一位 +10, 二位 +5, 三位 0, 四位 -5, 五位 -10
+  // それ以上の人数は-15など調整可能
+
+  // ここでは人数が多くても計算できる簡単なポイント割り当て例を実装
+  // 一位に+10、最下位に-10、間は線形に分布
+
+  const maxPoint = 10;
+  const minPoint = -10;
+
+  // 順位ごとのポイントを算出
+  const points = rankIds.map((id, i) => {
+    if (totalPlayers === 1) return 0;
+    return maxPoint - ( (maxPoint - minPoint) * i / (totalPlayers - 1) );
+  });
+
+  let outputLog = [];
+
+  for (let i = 0; i < totalPlayers; i++) {
+    const id = rankIds[i];
+    const p = players[id];
+
+    const prevRate = p.rate ?? INITIAL_RATE;
+    const pointDiff = points[i];
+
+    let newRate = prevRate + pointDiff;
+
+    if (newRate < MIN_RATE) newRate = MIN_RATE;
+
+    p.rate = Math.round(newRate);
+    p.matchCount = (p.matchCount ?? 0) + 1;
+    if (i === 0) p.winCount = (p.winCount ?? 0) + 1;
+    p.lastRank = i + 1;
+
+    outputLog.push(`${p.name}: ${prevRate} → ${p.rate} （${pointDiff >= 0 ? '+' : ''}${pointDiff.toFixed(1)}）`);
+  }
+
+  // 保存
+  localStorage.setItem("players", JSON.stringify(players));
+
+  // 結果表示
+  document.getElementById("ranking-result").innerText = "レート更新結果：\n" + outputLog.join("\n");
+
+  // テーブルや表示を更新したいならここで呼ぶ
+  updateTable();
+}
+
 
 function saveNickname() {
   const baseName = document.getElementById("nickname-input").value.trim();

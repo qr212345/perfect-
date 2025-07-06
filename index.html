@@ -456,17 +456,6 @@ function onScanSuccess(decodedText) {
         displayMessage("上限に達しました。");
         completeCurrentSeat();
       }
-      // プレイヤー登録
-      if (!players[decodedText]) {
-        players[decodedText] = {
-          name: decodedText.replace(/^player[-_]?/, ""),
-          rate: 50,
-          lastRank: null,
-          matchCount: 0,
-          winCount: 0
-        };
-        localStorage.setItem("players", JSON.stringify(players));
-      }
       localStorage.setItem("seatMap", JSON.stringify(seatMap));
       updateTable();
     }

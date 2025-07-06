@@ -133,12 +133,21 @@ function saveRankingHistory(rankIds) {
 function applyRankingFromArray(rankIds) {
   if (rankIds.length === 0) return;
 
-  // 順位履歴に保存
+  // --- 追加ここから ---
   saveRankingHistory(rankIds);
+  // --- 追加ここまで ---
 
-  // ... 以降は元の処理 ...
-  // （ここに元々のapplyRankingFromArrayのコードを続けてください）
-  // 省略 ...
+  const totalPlayers = rankIds.length;
+  const INITIAL_RATE = 50;
+  const MIN_RATE = 30;
+  const basePointsByRank = [6, 4, 3, 2, 1, 0];
+  let outputLog = [];
+
+  // 以下は元のコード...
+  for (let i = 0; i < totalPlayers; i++) {
+    // ...
+  }
+  // ...
 }
     
 function toggleRankingMode() {

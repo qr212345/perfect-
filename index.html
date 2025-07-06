@@ -188,7 +188,9 @@
   <button onclick="clearSavedData()">🗑 保存データを削除</button>
   <button onclick="saveSeatMapToDrive()">💾 Google Driveに保存</button>
   <button onclick="loadSeatMapFromDrive()">☁ Driveから復元</button>
-  <button id="rankingModeBtn" onclick="toggleRankingMode()">📋 順位登録モード切替</button> <!-- ✅ この行が重要 -->
+ <button onclick="toggleRankingMode()" style="position: fixed; top: 10px; right: 10px; z-index: 9999; background:red;">
+📋 順位登録モード切替（強制表示）
+</button>
 </div>
 
   <div class="footer-area">

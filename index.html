@@ -201,6 +201,8 @@
     </table>
   </div>
 
+  <div id="ranking-result" style="max-width:600px; margin:1rem auto; white-space: pre-wrap; background:#fff; padding:1rem; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.1);"></div>
+
   <pre id="ranking-result" style="
   max-width: 600px;
   margin: 1rem auto;
@@ -393,7 +395,11 @@ function makeListSortable(list) {
       list.appendChild(draggedItem);
     }
   });
-
+  
+  list.addEventListener('dragend', () => {
+    draggedItem = null;
+  });
+  
   // 全子要素にdraggable属性を付与済み（ここでは冗長かも）
   [...list.children].forEach(li => li.setAttribute('draggable', 'true'));
 }

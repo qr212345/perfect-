@@ -260,16 +260,17 @@
     const now = Date.now();
     if (now - lastScanTime < 2000) return; // 2秒以内の連続スキャンを無視
     lastScanTime = now;
-
-    if (isRankingMode && decodedText.startsWith("table")) {
-      if (!seatMap[decodedText]) {
-        displayMessage(`⚠ データが存在しない座席です: ${decodedText}`);
-        return;
-      }
-      showRankingSelection(decodedText);
+    
+    if (decodedText.startsWith("table") && isRankingMode) {
+    if (!seatMap[decodedText]) {
+      displayMessage(`⚠ データが存在しない座席です: ${decodedText}`);
       return;
     }
+    showRankingSelection(decodedText);
+    return; // ここで通常の座席登録処理は行わず終了させる場合
+  }
 
+    
     if (!/^(table|player)/.test(decodedText)) {
       displayMessage("❗不正なQRコードです。'table〜' または 'player〜' で始めてください。");
       return;
@@ -307,113 +308,130 @@
   }
 
   function showRankingSelection(seatID) {
-    const playersInSeat = seatMap[seatID];
-    if (!playersInSeat || playersInSeat.length === 0) {
-      displayMessage(`座席 ${seatID} にプレイヤーが登録されていません`);
-      return;
+  const playersInSeat = seatMap[seatID];
+  if (!playersInSeat || playersInSeat.length === 0) {
+    displayMessage(`座席 ${seatID} にプレイヤーが登録されていません`);
+    return;
+  }
+
+  // 既に表示があれば削除
+  const existing = document.getElementById('ranking-select-ui');
+  if (existing) existing.remove();
+
+  // UIコンテナ作成
+  const container = document.createElement('div');
+  container.id = 'ranking-select-ui';
+  container.style = 'padding:1rem; background:#fff; border:1px solid #ccc; margin:1rem auto; max-width:500px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1);';
+
+  // タイトル
+  const title = document.createElement('h3');
+  title.textContent = `座席 ${seatID} の順位を決定してください（上が1位）`;
+  container.appendChild(title);
+
+  // 並べ替えリスト（ul）
+  const list = document.createElement('ul');
+  list.id = 'sortable-player-list';
+  list.style = 'list-style:none; padding:0;';
+
+  playersInSeat.forEach(pid => {
+    const li = document.createElement('li');
+    li.textContent = players[pid]?.name || pid; // players は playerデータオブジェクト想定
+    li.dataset.id = pid;
+    li.style = 'padding:8px; margin:4px 0; background:#e3f2fd; border-radius:4px; cursor:move;';
+    li.setAttribute('draggable', 'true');
+    list.appendChild(li);
+  });
+
+  container.appendChild(list);
+
+  // 確定ボタン
+  const btn = document.createElement('button');
+  btn.textContent = '順位確定・レート計算';
+  btn.style = 'margin-top:1rem; padding:0.6rem 1rem; font-size:1rem;';
+  btn.onclick = () => {
+    const ordered = [...list.children].map(li => li.dataset.id);
+    container.remove();  // UI閉じる
+    applyRankingFromArray(ordered); // 順位配列を渡す関数に処理を任せる
+  };
+  container.appendChild(btn);
+
+  document.body.appendChild(container);
+
+  // 並べ替え機能を付与
+  makeListSortable(list);
+}
+
+function makeListSortable(list) {
+  let draggedItem = null;
+
+  list.addEventListener('dragstart', (e) => {
+    draggedItem = e.target;
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox対策で必須の空データ設定
+    e.dataTransfer.setData('text/plain', '');
+  });
+
+  list.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const afterElement = [...list.children].find(el => {
+      const box = el.getBoundingClientRect();
+      return e.clientY < box.top + box.height / 2;
+    });
+    if (afterElement) {
+      list.insertBefore(draggedItem, afterElement);
+    } else {
+      list.appendChild(draggedItem);
     }
+  });
 
-    const existing = document.getElementById("ranking-select-ui");
-    if (existing) existing.remove();
-
-    const container = document.createElement('div');
-    container.id = 'ranking-select-ui';
-
-    const title = document.createElement('h3');
-    title.textContent = `座席 ${seatID} の順位を決定してください（上が1位）`;
-    container.appendChild(title);
-
-    const list = document.createElement('ul');
-    list.id = 'sortable-player-list';
-
-    playersInSeat.forEach(pid => {
-      const li = document.createElement('li');
-      li.textContent = players[pid]?.name || pid;
-      li.dataset.id = pid;
-      list.appendChild(li);
-    });
-
-    container.appendChild(list);
-
-    const btn = document.createElement('button');
-    btn.textContent = '順位確定・レート計算';
-    btn.style = 'margin-top:1rem; padding:0.5rem 1rem; font-weight:bold;';
-    btn.onclick = () => {
-      const ordered = [...list.children].map(li => li.dataset.id);
-      container.remove();
-      applyRankingFromArray(ordered);
-    };
-    container.appendChild(btn);
-
-    document.body.appendChild(container);
-
-    makeListSortable(list);
-  }
-
-  function makeListSortable(list) {
-    let draggedItem = null;
-
-    list.addEventListener('dragstart', e => {
-      draggedItem = e.target;
-      e.dataTransfer.effectAllowed = 'move';
-    });
-
-    list.addEventListener('dragover', e => {
-      e.preventDefault();
-      const afterElement = [...list.children].find(el => {
-        return e.clientY < el.getBoundingClientRect().top + el.offsetHeight / 2;
-      });
-      if (afterElement) {
-        list.insertBefore(draggedItem, afterElement);
-      } else {
-        list.appendChild(draggedItem);
-      }
-    });
-
-    [...list.children].forEach(li => li.setAttribute('draggable', 'true'));
-  }
+  // 全子要素にdraggable属性を付与済み（ここでは冗長かも）
+  [...list.children].forEach(li => li.setAttribute('draggable', 'true'));
+}
 
   function applyRankingFromArray(rankIds) {
-    const totalPlayers = rankIds.length;
-    if (totalPlayers === 0) return;
+  const totalPlayers = rankIds.length;
+  if (totalPlayers === 0) return;
 
-    const INITIAL_RATE = 50;
-    const MIN_RATE = 30;
-    const basePointsByRank = [6, 4, 3, 2, 1, 0];
-    let outputLog = [];
+  const INITIAL_RATE = 50;
+  const MIN_RATE = 30;
+  const basePointsByRank = [6, 4, 3, 2, 1, 0];
+  let outputLog = [];
 
-    rankIds.forEach((id, i) => {
-      if (!players[id]) return;
-      const p = players[id];
-      const prevRate = p.rate ?? INITIAL_RATE;
-      const prevRank = p.lastRank;
-      let basePoint = i < basePointsByRank.length ? basePointsByRank[i] : 0;
-      let rankBonus = 0;
+  for (let i = 0; i < totalPlayers; i++) {
+    const id = rankIds[i];
+    if (!players[id]) continue;
 
-      if (prevRank !== null) {
-        if (prevRank === 1 && i + 1 === totalPlayers) rankBonus = -3;
-        else if (prevRank === totalPlayers && i + 1 === 1) rankBonus = +5;
-        else if (prevRank === totalPlayers && i + 1 === totalPlayers) rankBonus = +5;
-      }
+    const p = players[id];
+    const prevRate = p.rate ?? INITIAL_RATE;
+    const prevRank = p.lastRank;
+    let basePoint = i < basePointsByRank.length ? basePointsByRank[i] : 0;
+    let rankBonus = 0;
 
-      let totalPoint = basePoint + rankBonus;
-      if (prevRate >= 80) totalPoint *= 0.8;
+    if (prevRank !== null) {
+      if (prevRank === 1 && i + 1 === totalPlayers) rankBonus = -3;
+      else if (prevRank === totalPlayers && i + 1 === 1) rankBonus = +5;
+      else if (prevRank === totalPlayers && i + 1 === totalPlayers) rankBonus = +5;
+    }
 
-      const newRate = Math.max(MIN_RATE, Math.round(prevRate + totalPoint));
-      p.matchCount = (p.matchCount ?? 0) + 1;
-      if (i === 0) p.winCount = (p.winCount ?? 0) + 1;
+    let totalPoint = basePoint + rankBonus;
+    if (prevRate >= 80) totalPoint *= 0.8;
 
-      p.rate = newRate;
-      p.lastRank = i + 1;
+    const newRate = Math.max(MIN_RATE, Math.round(prevRate + totalPoint));
+    p.matchCount = (p.matchCount ?? 0) + 1;
+    if (i === 0) p.winCount = (p.winCount ?? 0) + 1;
 
-      outputLog.push(`${p.name} (${id}): 前回レート${prevRate} → 新レート${newRate}（ポイント変動: ${totalPoint.toFixed(1)}）`);
-    });
+    p.rate = newRate;
+    p.lastRank = i + 1;
 
-    localStorage.setItem("players", JSON.stringify(players));
-    displayMessage("レートを更新しました。");
-    alert(outputLog.join("\n"));
-    updateTable();
+    outputLog.push(`${p.name} (${id}): 前回レート${prevRate} → 新レート${newRate}（ポイント変動: ${totalPoint.toFixed(1)}）`);
   }
+
+  localStorage.setItem("players", JSON.stringify(players));
+  displayMessage("レートを更新しました。");
+  document.getElementById("ranking-result").innerText = outputLog.join("\n");
+  updateTable(); // 表更新関数（必要なら）
+}
+
 
   function completeCurrentSeat() {
     if (currentSeat) {

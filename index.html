@@ -109,6 +109,17 @@
     #seatTable tbody tr:hover {
       background-color: #e8f5e9;
     }
+    /* 残す順位結果表示用プレ */
+    #ranking-result {
+      white-space: pre-wrap;
+      margin: 1rem auto;
+      max-width: 600px;
+      background: #fff3e0;
+      padding: 1rem;
+      border-radius: 8px;
+      color: #d84315;
+      min-height: 2em;
+    }
   </style>
 </head>
 <body>
@@ -136,24 +147,21 @@
   </div>
 
 <script>
-let isRankingMode = false;
-let players = JSON.parse(localStorage.getItem("players") || "{}");
-let seatMap = JSON.parse(localStorage.getItem("seatMap") || "{}");
 let currentSeat = null;
+let seatMap = JSON.parse(localStorage.getItem("seatMap") || "{}");
+let players = JSON.parse(localStorage.getItem("players") || "{}");
 let actionHistory = [];
 let lastScanTime = 0;
-let draggedItem = null;
+let isRankingMode = false; // 追加
 
-// 順位履歴配列を復元（無ければ空配列）
+// 順位履歴は機能しないので空配列だけ保持
 let rankingHistory = JSON.parse(localStorage.getItem("rankingHistory") || "[]");
 
-// メッセージ表示用
 function displayMessage(msg) {
   const el = document.getElementById("result");
   if(el) el.innerText = msg;
 }
 
-// 表示更新
 function updateTable() {
   const tbody = document.querySelector("#seatTable tbody");
   if (!tbody) return;
@@ -201,7 +209,6 @@ function updateTable() {
   }
 }
 
-// 座席登録完了処理
 function completeCurrentSeat() {
   if(!currentSeat) {
     displayMessage("登録中の座席がありません。");
@@ -211,12 +218,10 @@ function completeCurrentSeat() {
   currentSeat = null;
   localStorage.setItem("seatMap", JSON.stringify(seatMap));
   updateTable();
-  // 完了ボタンは非表示に
   const btn = document.getElementById("completeSeatBtn");
   if (btn) btn.style.display = "none";
 }
 
-// 最後の追加を取り消し
 function undoLast() {
   if(actionHistory.length === 0) {
     displayMessage("取り消す操作がありません。");
@@ -231,7 +236,6 @@ function undoLast() {
   }
 }
 
-// 保存データ全削除
 function clearSavedData() {
   if(!confirm("保存されているすべての座席・プレイヤーデータを削除してよいですか？")) return;
   localStorage.removeItem("seatMap");
@@ -246,7 +250,6 @@ function clearSavedData() {
   displayMessage("保存データをすべて削除しました。");
 }
 
-// CSVダウンロード
 function downloadCSV() {
   let csv = "座席ID,生徒ID一覧\n";
   for(const seatID in seatMap){
@@ -261,7 +264,6 @@ function downloadCSV() {
   URL.revokeObjectURL(url);
 }
 
-// Google Drive連携（未実装）
 function saveSeatMapToDrive() {
   alert("Google Drive連携機能は未実装です。");
 }
@@ -269,149 +271,21 @@ function loadSeatMapFromDrive() {
   alert("Google Driveからの復元機能は未実装です。");
 }
 
-// 順位履歴保存
-function saveRankingHistory(rankIds) {
-  const timestamp = new Date().toISOString();
-  rankingHistory.push({ timestamp, rankIds });
-  localStorage.setItem("rankingHistory", JSON.stringify(rankingHistory));
-}
-
-// レート更新と順位履歴保存
-function applyRankingFromArray(rankIds) {
-  if (rankIds.length === 0) return;
-
-  saveRankingHistory(rankIds);
-
-  const INITIAL_RATE = 50;
-  const MIN_RATE = 30;
-  const basePointsByRank = [6, 4, 3, 2, 1, 0];
-  let outputLog = [];
-
-  for (let i = 0; i < rankIds.length; i++) {
-    const id = rankIds[i];
-    if (!players[id]) continue;
-
-    const p = players[id];
-    const prevRate = p.rate ?? INITIAL_RATE;
-    const prevRank = p.lastRank;
-    let basePoint = i < basePointsByRank.length ? basePointsByRank[i] : 0;
-    let rankBonus = 0;
-
-    if (prevRank !== null) {
-      if (prevRank === 1 && i + 1 === rankIds.length) rankBonus = -3;
-      else if (prevRank === rankIds.length && i + 1 === 1) rankBonus = +5;
-      else if (prevRank === rankIds.length && i + 1 === rankIds.length) rankBonus = +5;
-    }
-
-    let totalPoint = basePoint + rankBonus;
-    if (prevRate >= 80) totalPoint *= 0.8;
-
-    const newRate = Math.max(MIN_RATE, Math.round(prevRate + totalPoint));
-    p.matchCount = (p.matchCount ?? 0) + 1;
-    if (i === 0) p.winCount = (p.winCount ?? 0) + 1;
-
-    p.rate = newRate;
-    p.lastRank = i + 1;
-
-    outputLog.push(`${p.name} (${id}): 前回レート${prevRate} → 新レート${newRate}（ポイント変動: ${totalPoint.toFixed(1)}）`);
-  }
-
-  localStorage.setItem("players", JSON.stringify(players));
-  displayMessage("レートを更新しました。");
-  document.getElementById("ranking-result").innerText = outputLog.join("\n");
-  updateTable();
-}
-
-// 順位登録モード切替
+// 順位登録モード切替（実際は機能なし）
 function toggleRankingMode() {
   isRankingMode = !isRankingMode;
-  displayMessage(isRankingMode ? "✅ 順位登録モードに入りました（座席QRを読み取ってください）" : "📦 通常モードに戻りました");
+  displayMessage(isRankingMode ? "順位登録モード（実際の順位登録機能は無効化済み）" : "通常モードに戻りました");
 }
 
-// 順位履歴表示
+// 順位履歴を見る（保存はしてるが何もない）
 function showRankingHistory() {
-  if (rankingHistory.length === 0) {
-    alert("順位履歴はまだありません。");
-    return;
-  }
-
-  let msg = "順位履歴一覧（最新5件）:\n\n";
-  const latest5 = rankingHistory.slice(-5).reverse();
-
-  latest5.forEach((entry, idx) => {
-    msg += `${idx + 1}. ${entry.timestamp}\n`;
-    entry.rankIds.forEach((id, i) => {
-      msg += `   ${i + 1}位: ${players[id]?.name || id}\n`;
-    });
-    msg += "\n";
-  });
-
-  alert(msg);
+  alert("順位履歴機能は無効化されています。");
 }
 
-// ドラッグUIによる並び替え（順位決定）
-function showRankingSelection(seatID) {
-  const playersInSeat = seatMap[seatID];
-  if (!playersInSeat || playersInSeat.length === 0) {
-    displayMessage(`座席 ${seatID} にプレイヤーが登録されていません`);
-    return;
-  }
-
-  const container = document.createElement('div');
-  container.id = 'ranking-select-ui';
-  container.style = 'padding:1rem; background:#fff; border:1px solid #ccc; margin:1rem auto; max-width:500px; border-radius:8px;';
-
-  const title = document.createElement('h3');
-  title.textContent = `座席 ${seatID} の順位を決定してください（上が1位）`;
-  container.appendChild(title);
-
-  const list = document.createElement('ul');
-  list.style = 'list-style:none; padding:0;';
-  list.id = 'sortable-player-list';
-
-  playersInSeat.forEach(pid => {
-    const li = document.createElement('li');
-    li.textContent = players[pid]?.name || pid;
-    li.dataset.id = pid;
-    li.style = 'padding:8px; margin:4px 0; background:#e3f2fd; border-radius:4px; cursor:move;';
-    li.setAttribute('draggable', 'true');
-    list.appendChild(li);
-  });
-
-  list.addEventListener('dragstart', (e) => {
-    draggedItem = e.target;
-    e.dataTransfer.effectAllowed = 'move';
-  });
-  list.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    const afterElement = [...list.children].find(el => {
-      return e.clientY < el.getBoundingClientRect().top + el.offsetHeight / 2;
-    });
-    if (afterElement) {
-      list.insertBefore(draggedItem, afterElement);
-    } else {
-      list.appendChild(draggedItem);
-    }
-  });
-
-  container.appendChild(list);
-
-  const btn = document.createElement('button');
-  btn.textContent = '順位確定・レート計算';
-  btn.style = 'margin-top:1rem;';
-  btn.onclick = () => {
-    const ordered = [...list.children].map(li => li.dataset.id);
-    document.body.removeChild(container);
-    applyRankingFromArray(ordered);
-  };
-  container.appendChild(btn);
-  document.body.appendChild(container);
-}
-
-// QRコード読み取り成功時の処理
+// QRコード読み取り成功時
 function onScanSuccess(decodedText) {
   const now = Date.now();
-  if (now - lastScanTime < 2000) return; // 2秒間隔でスキャン制限
+  if (now - lastScanTime < 2000) return;
   lastScanTime = now;
 
   if (!/^(table|player)/.test(decodedText)) {
@@ -420,21 +294,14 @@ function onScanSuccess(decodedText) {
   }
 
   if (decodedText.startsWith("table") && isRankingMode) {
-    const seatID = decodedText;
-    if (!seatMap[seatID]) {
-      displayMessage(`⚠ データが存在しない座席です: ${seatID}`);
-      return;
-    }
-    showRankingSelection(seatID);
+    displayMessage("順位登録モードは無効化されています。");
     return;
   }
 
-  // 通常登録モード
   if (decodedText.startsWith("table")) {
     currentSeat = decodedText;
     if (!seatMap[currentSeat]) seatMap[currentSeat] = [];
     displayMessage(`座席「${currentSeat}」を読み取りました。最大6人まで登録可能。`);
-    // 登録完了ボタン表示
     const btn = document.getElementById("completeSeatBtn");
     if (btn) btn.style.display = "block";
   } else if (decodedText.startsWith("player")) {
@@ -456,13 +323,22 @@ function onScanSuccess(decodedText) {
         displayMessage("上限に達しました。");
         completeCurrentSeat();
       }
+      if (!players[decodedText]) {
+        players[decodedText] = {
+          name: decodedText.replace(/^player[-_]?/, ""),
+          rate: 50,
+          lastRank: null,
+          matchCount: 0,
+          winCount: 0
+        };
+        localStorage.setItem("players", JSON.stringify(players));
+      }
       localStorage.setItem("seatMap", JSON.stringify(seatMap));
       updateTable();
     }
   }
 }
 
-// html5-qrcode 起動
 function startScanner() {
   const html5QrCode = new Html5Qrcode("reader");
   const config = { fps: 10, qrbox: 250 };
@@ -479,11 +355,11 @@ function startScanner() {
   });
 }
 
-// ページロード時に開始
 window.addEventListener("load", () => {
   updateTable();
   startScanner();
 });
 </script>
+
 </body>
 </html>

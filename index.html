@@ -324,45 +324,53 @@
     return;
   }
 
-  // 既に表示があれば削除
+  // 既にUIがあれば削除
   const existing = document.getElementById('ranking-select-ui');
   if (existing) existing.remove();
 
   // UIコンテナ作成
   const container = document.createElement('div');
   container.id = 'ranking-select-ui';
-  container.style = 'padding:1rem; background:#fff; border:1px solid #ccc; margin:1rem auto; max-width:500px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1);';
+  // スタイルは省略してください（必要なら元のコードから持ってきて）
 
   // タイトル
   const title = document.createElement('h3');
   title.textContent = `座席 ${seatID} の順位を決定してください（上が1位）`;
   container.appendChild(title);
 
-  // 並べ替えリスト（ul）
+  // 並べ替えリスト作成
   const list = document.createElement('ul');
   list.id = 'sortable-player-list';
-  list.style = 'list-style:none; padding:0;';
+  // 必要に応じてスタイル設定
 
   playersInSeat.forEach(pid => {
     const li = document.createElement('li');
-    li.textContent = players[pid]?.name || pid; // players は playerデータオブジェクト想定
+    li.textContent = players[pid]?.name || pid;
     li.dataset.id = pid;
-    li.style = 'padding:8px; margin:4px 0; background:#e3f2fd; border-radius:4px; cursor:move;';
     li.setAttribute('draggable', 'true');
     list.appendChild(li);
   });
 
   container.appendChild(list);
 
-  // 確定ボタン
-  const btn = document.createElement('button');
-  btn.textContent = '順位確定・レート計算';
-  btn.style = 'margin-top:1rem; padding:0.6rem 1rem; font-size:1rem;';
-  btn.onclick = () => {
+  document.body.appendChild(container);
+
+  // ドラッグ＆ドロップによる並べ替え機能付与
+  makeListSortable(list);
+
+  // 並べ替え終了時に順位確定＆レート計算を自動実行
+  list.addEventListener('dragend', () => {
+    // 並び替えられた現在の順番を取得
     const ordered = [...list.children].map(li => li.dataset.id);
-    container.remove();  // UI閉じる
-    applyRankingFromArray(ordered); // 順位配列を渡す関数に処理を任せる
-  };
+    displayMessage(`順位を更新しました: ${ordered.map(id => players[id]?.name || id).join(', ')}`);
+
+    // レート計算実行
+    applyRankingFromArray(ordered);
+
+    // UIは閉じないので、自由に並べ替え続けられる
+  });
+}
+
   container.appendChild(btn);
 
   document.body.appendChild(container);

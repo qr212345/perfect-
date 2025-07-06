@@ -489,9 +489,41 @@
         totalPoint *= 0.8;
       }
 
-      // 新レート計算（下限設定）
-      let newRate =
-      </script>
+       // 新レート計算（下限設定）
+      let newRate = Math.max(MIN_RATE, Math.round(prevRate + totalPoint));
+
+      // 勝率・試合数更新
+      p.matchCount = (p.matchCount ?? 0) + 1;
+      if (i === 0) p.winCount = (p.winCount ?? 0) + 1; // 1位なら勝ち数増やす
+      p.rate = newRate;
+      p.lastRank = i + 1;
+
+      outputLog.push(`${p.name} (${id}): 前回レート${prevRate} → 新レート${newRate} （ポイント変動: ${totalPoint.toFixed(1)}）`);
+    }
+
+    localStorage.setItem("players", JSON.stringify(players));
+    displayRankingResult(outputLog.join("\n"));
+    updateTable();
+  }
+
+  function displayRankingResult(text) {
+    const el = document.getElementById("ranking-result");
+    el.innerText = text;
+  }
+
+  // QRコードスキャン開始
+  const html5QrCode = new Html5Qrcode("reader");
+  const config = { fps: 10, qrbox: { width: 280, height: 280 } };
+
+  html5QrCode.start(
+    { facingMode: "environment" },
+    config,
+    onScanSuccess
+  ).catch(err => {
+    displayMessage("カメラ起動に失敗しました: " + err);
+  });
+
+</script>
 
 </body>
 </html>

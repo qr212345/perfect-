@@ -163,6 +163,12 @@
     </table>
   </div>
 
+  <div id="nickname-form" style="display:none">
+    <p>新しいプレイヤーを検出しました。ニックネームを入力してください：</p>
+    <input type="text" id="nickname-input" placeholder="ニックネーム" />
+    <button onclick="saveNickname()">登録</button>
+  </div>
+
   <script>
   const API_URL = "https://script.google.com/macros/s/AKfycbyTxi9AHEaql2PpbrlnpFIW0jVzqD2jo_MEftHHYGQCSXPm5Dcqlz4UcZ_nQYHNDHdT/exec";
     
@@ -170,6 +176,8 @@
   let seatMap = {};
   let actionHistory = [];
   let lastScanTime = 0;
+  let players = JSON.parse(localStorage.getItem("players") || '{}');
+  let pendingQR = null;
 
   // ローカル保存から復元
   const savedMap = localStorage.getItem("seatMap");
@@ -332,21 +340,22 @@ async function loadSeatMapFromDrive() {
     document.body.removeChild(a);
   }
 
-  function updateTable() {
-    const tbody = document.querySelector('#seatTable tbody');
-    tbody.innerHTML = '';
-    for (const [seat, people] of Object.entries(seatMap)) {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${seat} <span style="color:red; cursor:pointer;" onclick="removeSeat('${seat}')">❌</span></td>
-        <td>${people.map(p =>
-          `<span class="student" onclick="removeStudent('${seat}', '${p}')">${p} ❌</span>`
-        ).join(' ')}</td>
-      `;
-      tbody.appendChild(row);
-    }
-    localStorage.setItem("seatMap", JSON.stringify(seatMap));
+ function updateTable() {
+  const tbody = document.querySelector('#seatTable tbody');
+  tbody.innerHTML = '';
+  for (const [seat, people] of Object.entries(seatMap)) {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${seat} <span style="color:red; cursor:pointer;" onclick="removeSeat('${seat}')">❌</span></td>
+      <td>${people.map(p =>
+        `<span class="student" onclick="removeStudent('${seat}', '${p}')">${players[p]?.name || p} ❌</span>`
+      ).join(' ')}</td>
+    `;
+    tbody.appendChild(row);
   }
+  localStorage.setItem("seatMap", JSON.stringify(seatMap));
+}
+
 
   function removeStudent(seat, person) {
     const people = seatMap[seat];
@@ -365,6 +374,17 @@ async function loadSeatMapFromDrive() {
       updateTable();
     }
   }
+    function generateHexID() {
+      return Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+  }
+
+    function getUniqueNickname(baseName) {
+      const existingNames = Object.values(players).map(p => p.name);
+      if (!existingNames.includes(baseName)) return baseName;
+      let count = 2;
+      while (existingNames.includes(`${baseName}（${count}）`)) count++;
+      return `${baseName}（${count}）`;
+   }
 
   function onScanSuccess(decodedText) {
     const now = Date.now();
@@ -387,6 +407,17 @@ async function loadSeatMapFromDrive() {
         displayMessage("最初に座席QR（table〜）を読み取ってください。");
         return;
       }
+
+if (!players[decodedText]) {
+      // 新規プレイヤー
+      pendingQR = decodedText;
+      document.getElementById("nickname-form").style.display = "block";
+      document.getElementById("nickname-input").value = "";
+      displayMessage(`新規プレイヤー「${decodedText}」が読み取られました。ニックネームを入力してください。`);
+    } else {
+      // 既存プレイヤーなら座席に登録
+      registerToSeat(decodedText);
+    }
       const people = seatMap[currentSeat];
       if (people.length >= 6) {
         displayMessage(`座席「${currentSeat}」は6人までです。`);
@@ -407,6 +438,46 @@ async function loadSeatMapFromDrive() {
     }
   }
 
+function saveNickname() {
+  const baseName = document.getElementById("nickname-input").value.trim();
+  if (!baseName || !pendingQR) return alert("ニックネームを入力してください");
+
+  const id = generateHexID();
+  const uniqueName = getUniqueNickname(baseName);
+
+  players[pendingQR] = {
+    id: id,
+    name: uniqueName,
+    rate: 50,
+    matchCount: 0,
+    winCount: 0
+  };
+
+  localStorage.setItem("players", JSON.stringify(players));
+  document.getElementById("nickname-form").style.display = "none";
+  displayMessage(`登録完了：${uniqueName}（ID: ${id}）`);
+  registerToSeat(pendingQR);
+  pendingQR = null;
+}
+
+function registerToSeat(playerQR) {
+  const people = seatMap[currentSeat];
+  if (people.includes(playerQR)) {
+    displayMessage(`${playerQR} はすでに登録済みです。`);
+    return;
+  }
+  if (people.length >= 6) {
+    displayMessage("この座席は定員（6人）に達しています。");
+    return;
+  }
+  people.push(playerQR);
+  actionHistory.push({ seat: currentSeat, person: playerQR });
+  localStorage.setItem("seatMap", JSON.stringify(seatMap));
+  updateTable();
+  displayMessage(`登録：${players[playerQR].name} を座席「${currentSeat}」に追加しました。`);
+}
+
+    
   let html5QrCode; 
     
 document.addEventListener("DOMContentLoaded", async () => {
